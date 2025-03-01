@@ -25,7 +25,6 @@
 			"extensions": [
         "GitHub.copilot",
         "ziglang.vscode-zig",
-        "bungcip.better-toml",
         "vadimcn.vscode-lldb"
 			],
 			"settings": {
