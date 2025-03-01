@@ -1,18 +1,40 @@
 {
-  "name": "Zig Dev Container",
-  "build": {
-    "dockerfile": "Dockerfile"
-  },
-  "customizations": {
-    "settings": {
-      "terminal.integrated.defaultProfile.linux": "bash"
-    },
-    "extensions": [
-      "GitHub.copilot",
-      "ziglang.vscode-zig",
-      "bungcip.better-toml",
-      "vadimcn.vscode-lldb"
-    ]
-  },
-  "remoteUser": "vscode"
+	"name": "Zig",
+	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
+	// "image": "mcr.microsoft.com/devcontainers/base:jammy",
+	"build": {
+		"dockerfile": "Dockerfile",
+		"args": {
+			// Update 'VARIANT' to pick a .NET Core version: 6.0, 7.0
+			"VARIANT": "bullseye"
+		}
+	},
+
+	// Features to add to the dev container. More info: https://containers.dev/features.
+	// "features": {},
+
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	// "forwardPorts": [],
+
+	// Use 'postCreateCommand' to run commands after the container is created.
+	// "postCreateCommand": "uname -a",
+
+	// Configure tool-specific properties.
+	"customizations": {
+		"vscode": {
+			"extensions": [
+        "GitHub.copilot",
+        "ziglang.vscode-zig",
+        "bungcip.better-toml",
+        "vadimcn.vscode-lldb"
+			],
+			"settings": {
+				"zig.path": "/usr/local/zig-linux/zig",
+				"zig.buildFilePath": "${workspaceFolder}/build.zig"
+			}
+		}
+	}
+
+	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+	// "remoteUser": "root"
 }

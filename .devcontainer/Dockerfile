@@ -1,30 +1,15 @@
-FROM debian:latest
+FROM --platform=linux/amd64 mcr.microsoft.com/vscode/devcontainers/base:0-bullseye
 
-# Install dependencies for Zig
-RUN apt-get update && apt-get install -y \
-    curl \
-    git \
-    build-essential \
-    unzip \
-    sudo \
-    && rm -rf /var/lib/apt/lists/*
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt update && apt upgrade -y
 
-# Create non-root user for VSCode
-RUN useradd -ms /bin/bash vscode && \
-    mkdir -p /workspace && chown vscode:vscode /workspace
-
-# Install Zig
 ENV ZIG_VERSION=0.13.0
-RUN curl -L https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz \
-    | tar -xJ && \
-    mv zig-linux-x86_64-${ZIG_VERSION} /usr/local/zig && \
-    chown -R vscode:vscode /usr/local/zig
+RUN wget "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz"
+RUN tar Jxvf "zig-linux-x86_64-${ZIG_VERSION}.tar.xz" -C /usr/local && rm "zig-linux-x86_64-${ZIG_VERSION}.tar.xz"
+RUN mv /usr/local/zig-linux-x86_64-${ZIG_VERSION} /usr/local/zig-linux
+ENV PATH=/usr/local/zig-linux:${PATH}
 
-# Set Zig path globally
-ENV PATH="/usr/local/zig:${PATH}"
+ENV ZLS_VERSION=0.13.0
+RUN wget "https://github.com/zigtools/zls/releases/download/${ZLS_VERSION}/zls-x86_64-linux.tar.xz"
 
-# Default to non-root user
-USER vscode
-WORKDIR /workspace
-
-CMD ["/bin/bash"]
+RUN tar Jxvf zls-x86_64-linux.tar.xz -C /usr/local && rm zls-x86_64-linux.tar.xz
