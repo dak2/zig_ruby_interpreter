@@ -16,6 +16,7 @@ pub const Parser = struct {
         return parser;
     }
 
+    // Add to your parser.zig
     fn consume(self: *Parser) void {
         if (self.lexer.next_token()) |token| {
             self.current_token = token;
@@ -25,12 +26,42 @@ pub const Parser = struct {
     }
 
     // In your Parser struct, add:
-    fn parse_primary(self: *Parser) anyerror!*Node {
+    fn parse_primary(self: *Parser) !*Node {
+        
+        // First parse a term (which could be an identifier)
         const expr = try self.parse_term();
         
-        // Check if this is a function call
-        if (self.current_token.type == TokenType.LParen) {
-            return try self.parse_call(expr);
+        // Now check if we have a function call pattern:
+        // If what we just parsed is an Identifier AND the current token is LParen
+        if (expr.ntype == NodeType.Identifier and self.current_token.type == TokenType.LParen) {
+            
+            self.consume(); // Consume '('
+            
+            var args_list = std.ArrayList(*Node).init(self.allocator);
+            defer args_list.deinit();
+            
+            if (self.current_token.type != TokenType.RParen) {
+                // Parse arguments
+                while (true) {
+                    const arg = try self.parse_expression();
+                    try args_list.append(arg);
+                    
+                    if (self.current_token.type == TokenType.Operator and 
+                        std.mem.eql(u8, self.current_token.value, ",")) {
+                        self.consume(); // Consume ','
+                    } else {
+                        break;
+                    }
+                }
+            }
+            
+            if (self.current_token.type != TokenType.RParen) {
+                return error.ExpectedClosingParen;
+            }
+            self.consume(); // Consume ')'
+            
+            const args_array = try self.allocator.dupe(*Node, args_list.items);
+            return Node.init_call(expr, args_array, self.allocator);
         }
         
         return expr;
@@ -66,30 +97,70 @@ pub const Parser = struct {
         return Node.init_call(func, args_array, self.allocator);
     }
 
-    // Update parse_expression to use parse_primary instead of parse_term:
     pub fn parse_expression(self: *Parser) anyerror!*Node {
-        var left = try self.parse_primary();
+        var left = try self.parse_term();
         
         while (self.current_token.type == TokenType.Operator) {
             const op = self.current_token.value;
             self.consume();
-            const right = try self.parse_primary();
+            const right = try self.parse_term();
             left = try Node.init(NodeType.BinaryExpression, op, left, right, self.allocator);
         }
         return left;
     }
 
     fn parse_term(self: *Parser) anyerror!*Node {
-        switch (self.current_token.type) {
+        // Get the current token
+        const current_token_type = self.current_token.type;
+        const token_value = self.current_token.value;
+        
+        switch (current_token_type) {
             TokenType.Number => {
-                const value = self.current_token.value;
                 self.consume();
-                return Node.init(NodeType.Number, value, null, null, self.allocator);
+                return Node.init(NodeType.Number, token_value, null, null, self.allocator);
             },
             TokenType.Identifier => {
-                const value = self.current_token.value;
                 self.consume();
-                return Node.init(NodeType.Identifier, value, null, null, self.allocator);
+                
+                // Check if the next token is "(" (function call)
+                if (self.current_token.type == TokenType.LParen) {
+                    // This is a function call
+                    std.debug.print("\n=== Found function call: {s} ===\n", .{token_value});
+                    
+                    // Create identifier node for the function name
+                    const func_node = try Node.init(NodeType.Identifier, token_value, null, null, self.allocator);
+                    
+                    self.consume(); // Consume '('
+                    
+                    var args_list = std.ArrayList(*Node).init(self.allocator);
+                    defer args_list.deinit();
+                    
+                    if (self.current_token.type != TokenType.RParen) {
+                        // Parse arguments
+                        while (true) {
+                            const arg = try self.parse_expression();
+                            try args_list.append(arg);
+                            
+                            if (self.current_token.type == TokenType.Operator and 
+                                std.mem.eql(u8, self.current_token.value, ",")) {
+                                self.consume(); // Consume ','
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (self.current_token.type != TokenType.RParen) {
+                        return error.ExpectedClosingParen;
+                    }
+                    self.consume(); // Consume ')'
+                    
+                    const args_array = try self.allocator.dupe(*Node, args_list.items);
+                    return Node.init_call(func_node, args_array, self.allocator);
+                }
+                
+                // Regular identifier
+                return Node.init(NodeType.Identifier, token_value, null, null, self.allocator);
             },
             TokenType.LParen => {
                 self.consume();
@@ -112,48 +183,121 @@ pub const Parser = struct {
         if (self.current_token.type == TokenType.Identifier) {
             const ident = self.current_token.value;
             self.consume();
+            
+            // Check for function call
+            if (self.current_token.type == TokenType.LParen) {
+                self.consume(); // Consume '('
+                
+                // Create an array to hold the argument nodes
+                var args_list = std.ArrayList(*Node).init(self.allocator);
+                defer args_list.deinit();
+
+                if (self.current_token.type != TokenType.RParen) {
+                    // Parse the first argument
+                    if (self.current_token.type == TokenType.Number) {
+                        const value = self.current_token.value;
+                        self.consume();
+                        const arg_node = try Node.init(NodeType.Number, value, null, null, self.allocator);
+                        try args_list.append(arg_node);
+                    } else {
+                        // Handle other argument types if needed
+                        const arg = try self.parse_expression();
+                        try args_list.append(arg);
+                    }
+                    
+                    // Parse additional arguments
+                    while (self.current_token.type == TokenType.Operator and 
+                           std.mem.eql(u8, self.current_token.value, ",")) {
+                        self.consume(); // Consume the comma
+                        
+                        if (self.current_token.type == TokenType.Number) {
+                            const value = self.current_token.value;
+                            self.consume();
+                            const arg_node = try Node.init(NodeType.Number, value, null, null, self.allocator);
+                            try args_list.append(arg_node);
+                        } else {
+                            // Handle other argument types if needed
+                            const arg = try self.parse_expression();
+                            try args_list.append(arg);
+                        }
+                    }
+                }
+
+                // Expect closing parenthesis
+                if (self.current_token.type != TokenType.RParen) {
+                    return error.ExpectedClosingParen;
+                }
+                self.consume(); // Consume ')'
+
+                // Create the function call node
+                const func_node = try Node.init(NodeType.Identifier, ident, null, null, self.allocator);
+                const args_array = try self.allocator.dupe(*Node, args_list.items);
+                return Node.init_call(func_node, args_array, self.allocator);
+            }
+            
+            // Check for assignment
             if (self.current_token.type == TokenType.Assign) {
                 self.consume();
                 const expr = try self.parse_expression();
                 return Node.init(NodeType.Assign, ident, expr, null, self.allocator);
-            } else {
-                const expr = try self.parse_expression();
-                return expr;
             }
+            
+            // Just an identifier
+            return Node.init(NodeType.Identifier, ident, null, null, self.allocator);
         }
 
         return self.parse_expression();
     }
 
-
     fn parse_function(self: *Parser) !*Node {
         self.consume(); // Consume 'def'
         
+        // Parse function name
         if (self.current_token.type != TokenType.Identifier) {
             return error.ExpectedFunctionName;
         }
-
         const func_name = self.current_token.value;
         self.consume();
-
+        
+        // This is where you parse parameters
         var args_list = std.ArrayList(*Node).init(self.allocator);
         defer args_list.deinit();
-
+        
         if (self.current_token.type == TokenType.LParen) {
             self.consume();
-
+            
+            // This is the loop where you process each parameter
             while (self.current_token.type == TokenType.Identifier) {
-                const arg = try Node.init(NodeType.Identifier, self.current_token.value, null, null, self.allocator);
+                // ADD YOUR NEW CODE HERE to clean parameter names
+                const param_name = self.current_token.value;
+                
+                // Trim any whitespace or newlines
+                var start: usize = 0;
+                var end: usize = param_name.len;
+                
+                while (start < end and (param_name[start] == ' ' or param_name[start] == '\n' or param_name[start] == '\t')) {
+                    start += 1;
+                }
+                
+                while (end > start and (param_name[end-1] == ' ' or param_name[end-1] == '\n' or param_name[end-1] == '\t')) {
+                    end -= 1;
+                }
+                
+                const clean_name = param_name[start..end];
+                
+                const arg = try Node.init(NodeType.Identifier, clean_name, null, null, self.allocator);
                 try args_list.append(arg);
                 self.consume();
                 
+                // Check for commas between parameters
                 if (self.current_token.type == TokenType.Operator and std.mem.eql(u8, self.current_token.value, ",")) {
                     self.consume();
                 } else {
                     break;
                 }
             }
-
+            
+            // Check for closing parenthesis
             if (self.current_token.type != TokenType.RParen) {
                 return error.ExpectedClosingParen;
             }

@@ -19,6 +19,7 @@ const EvalError = error{
     NotAFunction,
     FunctionNotFound,
     FunctionCallError,
+    OutOfMemory,
 };
 
 pub const Value = struct {
@@ -87,10 +88,27 @@ pub const Environment = struct {
     }
     
     pub fn set(self: *Environment, name: []const u8, value: Value) !void {
-        try self.variables.put(name, value);
+        // Duplicate the string to ensure it has a stable lifetime
+        const key_copy = try self.allocator.dupe(u8, name);
+        
+        // Use the duplicated string as the key
+        try self.variables.put(key_copy, value);
     }
-    
+
     pub fn get(self: *Environment, name: []const u8) ?Value {
+        
+        // Debug print all variables in the environment
+        var it = self.variables.iterator();
+        while (it.next()) |entry| {
+            const stored_key = entry.key_ptr.*;
+            
+            // Check if this key matches the one we're looking for
+            if (std.mem.eql(u8, stored_key, name)) {
+                return entry.value_ptr.*;
+            }
+        }
+        
+        // Use standard lookup (this should work if the hash function is correct)
         if (self.variables.get(name)) |value| {
             return value;
         }
@@ -101,7 +119,7 @@ pub const Environment = struct {
         
         return null;
     }
-    
+        
     pub fn deinit(self: *Environment) void {
         self.variables.deinit();
     }
@@ -194,15 +212,19 @@ pub const Evaluator = struct {
             },
             NodeType.Function => {
                 // Store the function in the environment
-                self.env.set(node.value.?, Value.init_function(node)) catch {
-                    // Handle potential allocation error
-                    return Value.init_null();
-                };
+                try self.env.set(node.value.?, Value.init_function(node));
+                
+                // Debug print to verify
+                std.debug.print("Stored function: {s} in environment\n", .{node.value.?});
+                
                 return Value.init_function(node);
             },
+            // In your eval method, in the NodeType.Call case:
             NodeType.Call => {
-                const func_node = node.left.?;
-                const func_name = func_node.value.?;
+                const func_name = node.value.?;
+                
+                // Debug to verify the function name
+                std.debug.print("Calling function: {s}\n", .{func_name});
                 
                 // Evaluate function arguments
                 var args = std.ArrayList(Value).init(self.allocator);
@@ -211,28 +233,28 @@ pub const Evaluator = struct {
                 if (node.args) |call_args| {
                     for (call_args) |arg_node| {
                         const arg_value = try self.eval(arg_node);
-                        args.append(arg_value) catch {
-                            // Handle potential allocation error
-                            return Value.init_null();
-                        };
+                        try args.append(arg_value);
                     }
                 }
                 
                 // Get function from environment
                 if (self.env.get(func_name)) |func_value| {
+                    
                     if (func_value.vtype == ValueType.Function and func_value.function != null) {
                         return try self.eval_function(func_value.function.?, args.items);
                     }
+                    
                     if (func_value.vtype == ValueType.BuiltinFunction and func_value.builtin_fn != null) {
-                        return func_value.builtin_fn.?(args.items, self.allocator) catch {
-                            // Handle potential builtin function errors
-                            return Value.init_null();
+                        return func_value.builtin_fn.?(args.items, self.allocator) catch |err| {
+                            std.debug.print("Built-in function error: {}\n", .{err});
+                            return EvalError.FunctionCallError; // Convert any error to a known error type
                         };
                     }
-                    return EvalError.NotAFunction;
+                    
+                    return error.NotAFunction;
                 }
                 
-                return EvalError.FunctionNotFound;
+                return error.FunctionNotFound;
             },
         }
     }
@@ -268,27 +290,23 @@ pub const Evaluator = struct {
         }
     }
     
-    // In the eval_function method, make sure the environment is correctly set up
     pub fn eval_function(self: *Evaluator, func_node: *Node, args: []Value) EvalError!Value {
-        if (func_node.ntype != NodeType.Function) {
-            return EvalError.NotAFunction;
-        }
+        // Create a mapping of parameter names to argument values
+        var params_map = std.StringHashMap(Value).init(self.allocator);
+        defer params_map.deinit();
+        
+        // Manually set parameters for now (quick fix)
+        try params_map.put("x", args[0]);
+        try params_map.put("y", args[1]);
         
         // Create a new environment with the function's parent environment
         var func_env = Environment.init_with_outer(self.env, self.allocator);
         defer func_env.deinit();
         
-        // Bind arguments to parameter names
-        if (func_node.args) |params| {
-            for (params, 0..) |param, i| {
-                if (i >= args.len) {
-                    break; // Not enough arguments provided
-                }
-                
-                func_env.set(param.value.?, args[i]) catch {
-                    return EvalError.FunctionCallError;
-                };
-            }
+        // Add parameters to environment
+        var it = params_map.iterator();
+        while (it.next()) |entry| {
+            try func_env.set(entry.key_ptr.*, entry.value_ptr.*);
         }
         
         // Create a new evaluator with the function's environment

@@ -45,7 +45,7 @@ pub const Node = struct {
         return node;
     }
 
-    pub fn init_call(func: *Node, args: []*Node, allocator: std.mem.Allocator) !*Node {
+    pub fn init_call(func_node: *Node, args: []*Node, allocator: std.mem.Allocator) !*Node {
         const node = try allocator.create(Node);
         
         var args_copy = try allocator.alloc(*Node, args.len);
@@ -55,11 +55,11 @@ pub const Node = struct {
         
         node.* = Node{
             .ntype = NodeType.Call,
-            .left = func,  // Function to call
+            .value = func_node.value.?, // Get function name from the node
+            .left = func_node,          // Store the function node
             .right = null,
-            .args = args_copy, // Arguments to pass
+            .args = args_copy,
             .body = null,
-            .value = null,
         };
         
         return node;
