@@ -24,22 +24,62 @@ pub const Parser = struct {
         }
     }
 
-    pub fn parse_expression(self: *Parser) anyerror!*Node {
-        var left = try self.parse_term();
+    // In your Parser struct, add:
+    fn parse_primary(self: *Parser) anyerror!*Node {
+        const expr = try self.parse_term();
+        
+        // Check if this is a function call
+        if (self.current_token.type == TokenType.LParen) {
+            return try self.parse_call(expr);
+        }
+        
+        return expr;
+    }
 
+    fn parse_call(self: *Parser, func: *Node) !*Node {
+        self.consume(); // Consume '('
+        
+        var args_list = std.ArrayList(*Node).init(self.allocator);
+        defer args_list.deinit();
+        
+        if (self.current_token.type != TokenType.RParen) {
+            // Parse arguments
+            while (true) {
+                const arg = try self.parse_expression();
+                try args_list.append(arg);
+                
+                if (self.current_token.type == TokenType.Operator and 
+                    std.mem.eql(u8, self.current_token.value, ",")) {
+                    self.consume(); // Consume ','
+                } else {
+                    break;
+                }
+            }
+        }
+        
+        if (self.current_token.type != TokenType.RParen) {
+            return error.ExpectedClosingParen;
+        }
+        self.consume(); // Consume ')'
+        
+        const args_array = try self.allocator.dupe(*Node, args_list.items);
+        return Node.init_call(func, args_array, self.allocator);
+    }
+
+    // Update parse_expression to use parse_primary instead of parse_term:
+    pub fn parse_expression(self: *Parser) anyerror!*Node {
+        var left = try self.parse_primary();
+        
         while (self.current_token.type == TokenType.Operator) {
             const op = self.current_token.value;
             self.consume();
-            const right = try self.parse_term();
+            const right = try self.parse_primary();
             left = try Node.init(NodeType.BinaryExpression, op, left, right, self.allocator);
         }
         return left;
     }
 
     fn parse_term(self: *Parser) anyerror!*Node {
-        std.debug.print("\n=== type in parse_term function === {s}\n", .{@tagName(self.current_token.type)});
-        std.debug.print("\n=== value in parse_term function === {c}\n", .{self.current_token.value});
-
         switch (self.current_token.type) {
             TokenType.Number => {
                 const value = self.current_token.value;

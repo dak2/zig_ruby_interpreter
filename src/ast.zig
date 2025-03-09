@@ -6,6 +6,7 @@ pub const NodeType = enum {
     Function,
     BinaryExpression,
     Assign,
+    Call
 };
 
 pub const Node = struct {
@@ -39,6 +40,26 @@ pub const Node = struct {
             .body = body_copy,
             .left = null,
             .right = null
+        };
+        
+        return node;
+    }
+
+    pub fn init_call(func: *Node, args: []*Node, allocator: std.mem.Allocator) !*Node {
+        const node = try allocator.create(Node);
+        
+        var args_copy = try allocator.alloc(*Node, args.len);
+        for (args, 0..) |arg, i| {
+            args_copy[i] = arg;
+        }
+        
+        node.* = Node{
+            .ntype = NodeType.Call,
+            .left = func,  // Function to call
+            .right = null,
+            .args = args_copy, // Arguments to pass
+            .body = null,
+            .value = null,
         };
         
         return node;
