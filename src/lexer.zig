@@ -47,7 +47,7 @@ pub const Lexer = struct {
                 'a'...'z', 'A'...'Z', '_' => {
                     return self.read_identifier();
                 },
-                '+', '-', '*', '/' => {
+                '+', '-', '*', '/', ',' => {
                     self.consume();
                     return Token{ .type = TokenType.Operator, .value = self.input[self.position - 1 .. self.position] };
                 },

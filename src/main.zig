@@ -5,6 +5,7 @@ const NodeType = @import("ast.zig").NodeType;
 const Node = @import("ast.zig").Node;
 
 fn print_ast(node: *Node, depth: usize) void {
+    // Print indentation
     var indent: usize = 0;
     while (indent < depth) : (indent += 1) {
         std.debug.print("  ", .{});
@@ -21,6 +22,37 @@ fn print_ast(node: *Node, depth: usize) void {
         NodeType.Assign => {
             std.debug.print("Assign: {s}\n", .{node.value.?});
             print_ast(node.left.?, depth + 1);
+        },
+        NodeType.Function => {
+            std.debug.print("Function: {s}\n", .{node.value.?});
+            
+            // Print arguments
+            if (node.args) |args| {
+                // Print indentation for Arguments label
+                indent = 0;
+                while (indent < depth + 1) : (indent += 1) {
+                    std.debug.print("  ", .{});
+                }
+                std.debug.print("Arguments:\n", .{});
+                
+                for (args) |arg| {
+                    print_ast(arg, depth + 2);
+                }
+            }
+            
+            // Print function body
+            if (node.body) |body| {
+                // Print indentation for Body label
+                indent = 0;
+                while (indent < depth + 1) : (indent += 1) {
+                    std.debug.print("  ", .{});
+                }
+                std.debug.print("Body:\n", .{});
+                
+                for (body) |stmt| {
+                    print_ast(stmt, depth + 2);
+                }
+            }
         },
     }
 }
